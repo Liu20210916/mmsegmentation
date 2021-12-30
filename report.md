@@ -18,7 +18,7 @@ train_pipeline = [
 ]
 ```
 
-# 2. 算法思路、亮点解读、建模算力、环境
+# 2. 算法思路、亮点解读、建模算力、环境 （GPU部分）
 
 ## 2.1 算法思路
 
@@ -26,17 +26,17 @@ train_pipeline = [
 
 ## 2.2 亮点解读
 
-亮点：**除模型融合外，没有使用特殊手段就能获得高分，在复赛期间有较大的潜力**
+分割性能优化：
+采用高斯加权滑窗平均，有效解决大幅遥感图像“切割-预测”流程中切割边缘预测不准确、切割线两侧预测不一致的问题，在预测阶段提升模型分割效果
 
-目前的模型训练几乎没有使用非常规的技术，基本按照`mmsegmentation`默认流程。
-
-仅选择了一个CNN模型和一个Transformer模型融合。
+计算效率优化：
+采用并行式图片加载，既支持已切割小图的同步加载，也支持大图的并行切割，在预测阶段有效的提升了模型的数据加载速度，结合批量化预测，进一步充分利用GPU运算能力，在使用相同模型条件下，计算速度显著优于其他选手。
 
 ## 2.3 建模算力
 
 - 显存：需要至少32G显存，推荐双卡各24G显存，本地建模使用的是2x TITAN RTX（2x24=48G显存）。
 
-- 耗时：两个模型训练（双卡）约8+6=14h，预测（单卡）约20min。
+- 耗时：模型训练约8h，预测（单卡）约3min。
 
 ## 2.4 环境
 
@@ -49,126 +49,30 @@ mmseg=0.17.0
 cuda=10.2
 ```
 
-# 3. 详细的解题思路说明
+# 3. 详细的解题思路说明 （GPU部分）
 
 浏览近期发表在知名会议、期刊上的关于图像分割模型的论文，比较论文中报道的模型性能（例如在CitySpace和ADE20k公开数据集上的效果），参考`mmsegmentation`的代码实现以及对应的结果，选择最佳的模型。
 
-因此，从CNN模型中，选择了ResNeSt101+DeepLabV3Plus（记为*res*），从Transformer模型中，选择了Swin-Base+UperNet（记为*swin*）。分别按照`mmsegmentation`推荐的训练流程训练12个epoch。
+因此选择了Swin-Base+UperNet。分别按照`mmsegmentation`推荐的训练流程训练12个epoch。仅使用默认的训练参数，主要在测试阶段进行性能优化。
 
-就单个模型而言，*res*可以获得67.19的分数，*swin*可以获得69.61的分数。对两个模型输出概率进行平均，融合输出得分为70.06。
+# 4. 项目运行环境和运行办法等信息，根据该文档操作指引，能复现选手结果 （GPU部分）
 
-# 4. 项目运行环境和运行办法等信息，根据该文档操作指引，能复现选手结果
+详见各阶段提交的复现代码
 
+# 5. NPU部分
 
-## 4.1 安装环境
-```sh
-# 安装mm-lab的conda环境
-conda create -n open-mmlab python=3.7 -y
-conda activate open-mmlab
+参考[mindspore/models-deeplabv3plus](https://gitee.com/mindspore/models/tree/master/official/cv/deeplabv3plus)，对内部进行少量调整，以适应本次竞赛数据格式，采用默认参数进行训练12个周期。由于对Mindspore框架、ModelArts平台不熟悉，大部分时间花费在了学习使用阶段，因此没有在模型和算法上提出有效的创新。
 
-# 安装pytorch
-conda install pytorch=1.7.1 torchvision cudatoolkit=10.2 -c pytorch
+# 6. 其他说明内容
 
-# 安装mmcv
-pip install mmcv-full -f https://download.openmmlab.com/mmcv/dist/cu102/1.7.1/index.html
-
-# 安装mmseg
-git clone https://github.com/CarnoZhao/mmsegmentation.git
-cd mmsegmentation
-git checkout remote_review
-pip install -r requirements/build.txt
-pip install -v -e .
-```
-
-## 4.2 配置数据
-```=
-|--data
-    |--remote
-        |--train # (编号7001~34999的图片)
-        |   |--images
-        |   |  |--xxx.tif
-        |   |  |--xxx.tif 
-        |   |
-        |   |--labels
-        |      |--xxx.png
-        |      |--xxx.png 
-        |
-        |--val # (编号0~7000的图片)
-        |   |--images
-        |   |  |--xxx.tif
-        |   |  |--xxx.tif 
-        |   |
-        |   |--labels
-        |      |--xxx.png
-        |      |--xxx.png 
-        |
-        |--test
-            |--images
-            |  |--xxx.tif
-            |  |--xxx.tif 
-            |
-            |--labels # (测试集本没有标签，为了保证数据加载正确，随意填充10000张png即可)
-               |--xxx.png
-               |--xxx.png 
-```
-
-## 4.3 训练
-
-> 如果要复现训练过程，执行下面的代码
-
-```sh
-# 下载swin的预训练模型
-mkdir weights
-python tools/model_converters/swin2mmseg.py https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window12_384_22k.pth weights/swin_base_patch4_window12_384_22k.pth 
-
-# 训练
-gpus=2 # (GPU 数量)
-./tools/dist_train.sh ./work_configs/remote/remote_swb.py $gpus
-./tools/dist_train.sh ./work_configs/remote/remote_dl3pr101.py $gpus
-```
-
-> 如果不复现训练模型，执行下面代码准备预测
-
-```sh
-mkdir ./work_dirs/remote/swb384_22k_1x_16bs_all ./work_dirs/remote/dl3pr101_1x_16bs_all
-cp ./work_configs/remote/remote_swb.py ./work_dirs/remote/swb384_22k_1x_16bs_all/remote_swb.py
-cp ./work_configs/remote/remote_dl3pr101.py ./work_dirs/remote/dl3pr101_1x_16bs_all/remote_dl3pr101.py
-
-# 从百度云下载模型：swin_latest.pth, res_latest.pth
-# >>>
-# 链接：https://pan.baidu.com/s/1xIgbYNwBUcDPbOkzMImzYQ 
-# 提取码：u45x
-# >>>
-cp swin_latest.pth ./work_dirs/remote/swb384_22k_1x_16bs_all/latest.pth
-cp res_latest.pth ./work_dirs/remote/dl3pr101_1x_16bs_all/latest.pth
-```
-
-## 4.4 预测
-
-```sh
-python ./tools/ensemble_inferencer.py
-```
-
-## 4.5 输出
-
-输出结果在`./work_dirs`
-
-# 5. 其他说明内容
-
-## 5.1 文档+代码
+## 6.1 文档+代码
 
 本文档以及代码在[https://github.com/CarnoZhao/mmsegmentation/tree/remote_review](https://github.com/CarnoZhao/mmsegmentation/tree/remote_review)，**注意branch是remote_review**。
 
 
-## 5.2 预训练模型
+## 6.2 预训练模型
 
 预训练模型链接（可直接下载）：
-
-- ResNeSt101：(训练过程会自动下载)
-
-    - 论文：[https://arxiv.org/abs/2004.08955](https://arxiv.org/abs/2004.08955)
-
-    - 模型：[https://download.openmmlab.com/mmclassification/v0/resnest/resnest101_imagenet_converted-032caa52.pth](https://download.openmmlab.com/mmclassification/v0/resnest/resnest101_imagenet_converted-032caa52.pth)
 
 - Swin-Base：(需要手动下载，见`run.sh`第二行)
 
@@ -177,19 +81,11 @@ python ./tools/ensemble_inferencer.py
     - 模型：[https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window12_384_22k.pth](https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window12_384_22k.pth)
 
 
-## **5.3 复现须知**
-请完成环境安装后再执行训练和预测，强烈建议环境安装按照[4.1节](#41-安装环境)**一步一步安装**，若遇到问题可参考[get_started.md](https://github.com/CarnoZhao/mmsegmentation/blob/master/docs/get_started.md#installation)。
 
-- 第一步：[安装环境](#41-安装环境)
-
-- 第二步：[配置数据](#42-配置数据)
-
-- 第三步：[训练、预测（执行`run.sh`）](#43-训练)
-
-# 6. 联系方式（手机号或微信）
+# 7. 联系方式（手机号或微信）
 
 - 手机：18810903806
 
 - 微信号：Carno_Zhao
 
-# 7. 身份证明
+# 8. 身份证明
