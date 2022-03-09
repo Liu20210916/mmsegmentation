@@ -1,45 +1,26 @@
 ./tools/dist_test.sh \
-    work_dirs/remote/swb_22k_18e_16bs_all/remote_swb.py \
-    work_dirs/remote/swb_22k_18e_16bs_all/latest.pth \
-    2 \
+    work_dirs/binzhou/convx_l_2x_ft_all/binzhou_convx_l_ft.py \
+    work_dirs/binzhou/convx_l_2x_ft_all/epoch_24.pth \
+    4 \
     --eval-options imgfile_prefix="./work_imgs" \
     --format-only
+mkdir results
+python -c "import os; import cv2; from skimage import io; [io.imsave(os.path.join('./results', x.replace('GF', 'LT').replace('png', 'tif')), cv2.imread('./work_imgs/' + x, cv2.IMREAD_UNCHANGED) + 1) for x in os.listdir('./work_imgs')]" > /dev/null
+cd results; zip results.zip -r -9 *.tif; mv results.zip ../data/binzhou/; cd ..; rm results -rf
 
+./tools/dist_test.sh \
+    work_dirs/tamper/convx_l_6x_dice_aug1/tamper_convx_l.py \
+    work_dirs/tamper/convx_l_6x_dice_aug1/epoch_72.pth \
+    2 \
+    --options \
+    model.test_cfg.binary_thres=0.4 \
+    data.test.pipeline.1.flip=False \
+    --format-only \
+    --eval-options imgfile_prefix="./data/tamper/test/images" \
+    data.test.img_dir="train2/img" \
+    data.test.ann_dir="train2/msk" \
+    --eval mIoU mFscore \
 
-array([0.02170333, 0.25092608, 0.60119722, 0.03025677, 0.01214302,
-       0.01571181, 0.01009619, 0.02583056, 0.03213502])
+python -c "import glob, cv2; [cv2.imwrite(_, cv2.imread(_, cv2.IMREAD_UNCHANGED) * 255) for _ in glob.glob('./data/tamper/test/images/*')]"; cd ./data/tamper/test; zip images.zip -9 -r ./images
 
-docker run \
-    -it \
-    --gpus=all \
-    -v /home/zhaoxun/codes/mmsegmentation/data/remote2/test:/input_path \
-    -v /home/zhaoxun/codes/mmsegmentation/work_imgs:/output_path \
-    -v /home/zhaoxun/codes/mmsegmentation:/data \
-    --shm-size 8G \
-    mmseg:latest \
-    /bin/bash
-    python /workspace/run.py /input_path /output_path
-
-
-###
-# docker install
-apt-get update && apt-get install -y git ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 vim libgl1-mesa-glx \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
-conda clean --all
-pip install mmcv-full==1.3.10 -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.8.0/index.html
-git clone https://github.com/CarnoZhao/mmsegmentation.git
-cd mmsegmentation
-git checkout v0.17.0.base
-pip install -r requirements.txt
-pip install --no-cache-dir -e .
-
-# create submission
-target=/workspace/work_dirs/remote2/swb384_22k_1x_10bs2acc_all
-subtarget=$(echo $target | awk 'BEGIN{FS = "/"}{print $NF}')
-mkdir -p $target
-cd $target
-cp /data/work_dirs/remote2/$subtarget/epoch_12.pth ./
-cp /data/work_dirs/remote2/$subtarget/remote2_swb.py ./
-cd /workspace
-vim run.py
+python -c "import glob, cv2; print(sum([(cv2.imread(_, cv2.IMREAD_UNCHANGED) == 0).all() for _ in glob.glob('./data/tamper/test/images/*')]))"
