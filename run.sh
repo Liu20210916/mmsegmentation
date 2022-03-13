@@ -9,16 +9,16 @@ python -c "import os; import cv2; from skimage import io; [io.imsave(os.path.joi
 cd results; zip results.zip -r -9 *.tif; mv results.zip ../data/binzhou/; cd ..; rm results -rf
 
 ./tools/dist_test.sh \
-    work_dirs/tamper/convx_l_6x_dice_aug1/tamper_convx_l.py \
-    work_dirs/tamper/convx_l_6x_dice_aug1/epoch_72.pth \
+    work_dirs/tamper/convx_b_exp_6x_lova_aug1_dec/tamper_convx_b_exp.py \
+    work_dirs/tamper/convx_b_exp_6x_lova_aug1_dec/epoch_72.pth \
     2 \
     --options \
-    model.test_cfg.binary_thres=0.4 \
+    model.test_cfg.binary_thres=0.5 \
     data.test.pipeline.1.flip=False \
-    --format-only \
-    --eval-options imgfile_prefix="./data/tamper/test/images" \
     data.test.img_dir="train2/img" \
     data.test.ann_dir="train2/msk" \
+    --format-only \
+    --eval-options imgfile_prefix="./data/tamper/train2/preds" \
     --eval mIoU mFscore \
 
 python -c "import glob, cv2; [cv2.imwrite(_, cv2.imread(_, cv2.IMREAD_UNCHANGED) * 255) for _ in glob.glob('./data/tamper/test/images/*')]"; cd ./data/tamper/test; zip images.zip -9 -r ./images
